@@ -15,8 +15,16 @@ ingester:
         store: memberlist
       replication_factor: 1
     final_sleep: 0s
-  chunk_idle_period: 5m
-  chunk_retain_period: 30s
+  # How long chunks should sit in-memory with no updates before being flushed if
+  # they don't hit the max block size. This means that half-empty chunks will
+  # still be flushed after a certain period as long as they receive no further
+  # activity.
+  chunk_idle_period: 30m
+  # How long chunks should be retained in-memory after they've been flushed.
+  chunk_retain_period: 0s
+  # The targeted _uncompressed_ size in bytes of a chunk block When this threshold
+  # is exceeded the head block will be cut and compressed inside the chunk.
+  chunk_block_size: 512
   wal:
     enabled: true
     dir: /loki/wal
@@ -53,8 +61,7 @@ storage_config:
     cache_location: /loki/index_cache
     shared_store: s3
   aws:
-    # s3: s3://uj4lLKbxOyEAIVh7FvZq:9BVIfxjj96Ybzdi0ICN9dBFPvVsTHOcdQFeht7rv@minio.:9000/loki-data
-    s3: s3://thienhaole92:thienhaole92123@minio.:9000/loki-data
+    s3: s3://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@minio.:9000/${LOKI_BUCKET}
     s3forcepathstyle: true
 
 compactor:

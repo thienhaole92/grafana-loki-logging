@@ -1,6 +1,8 @@
 package service
 
 import (
+	"time"
+
 	vndcontext "github.com/thienhaole92/vnd/context"
 	_ "github.com/thienhaole92/vnd/error"
 	"github.com/thienhaole92/vnd/logger"
@@ -32,6 +34,7 @@ func (s *getSuccess) Execute(ctx vndcontext.Context, req *GetSuccessReq) (*rest.
 	return &rest.Result{
 		Data: map[string]any{
 			"status": "OK",
+			"time":   time.Now(),
 		},
 	}, nil
 }
