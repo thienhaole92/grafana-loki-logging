@@ -1,0 +1,110 @@
+version: "3.9"
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "1m"
+    max-file: "1"
+    tag: "{{.Name}}"
+
+services:
+  golang-demo-app:
+    container_name: golang-demo-app
+    build:
+      dockerfile: Dockerfile
+      context: ./golang-demo-app
+    ports:
+      - 1080:1080
+    env_file:
+      - ./golang-demo-app/.env
+    labels:
+      logging: "promtail"
+      logging_jobname: "containerlogs"
+    networks:
+      - lokinet
+    logging: *default-logging
+
+  # Since the Loki containers are running as user 10001 and the mounted data volume is owned by root,
+  # Loki would not have permissions to create the directories.
+  # Therefore the init container changes permissions of the mounted directory.
+  loki:
+    container_name: loki
+    image: grafana/loki:${LOKI_VERSION}
+    user: root
+    ports:
+      - 3100:3100
+      - 7946
+      - 9095
+    command: -config.file=/etc/loki/config.yaml
+    volumes:
+      - ./loki/config.yaml:/etc/loki/config.yaml
+      - ./data/loki:/loki
+    env_file:
+      - .env
+    depends_on:
+      - minio
+    networks:
+      - lokinet
+    restart: unless-stopped
+    logging: *default-logging
+
+  promtail:
+    container_name: promtail
+    image: grafana/promtail:${LOKI_VERSION}
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./data/promtail/var/log:/var/log
+      # custom config will read logs from the containers of this project
+      - ./promtail/config.yaml:/etc/promtail/config.yml
+      # to read container labels and logs
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/containers:/var/lib/docker/containers
+    depends_on:
+      - loki
+    networks:
+      - lokinet
+    restart: unless-stopped
+    logging: *default-logging
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:${GRAFANA_VERSION}
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    volumes:
+      - ./grafana/provisioning/datasources/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yaml
+    ports:
+      - 3000:3000
+    restart: unless-stopped
+    depends_on:
+      - loki
+    networks:
+      - lokinet
+    logging: *default-logging
+
+  minio:
+    container_name: minio
+    image: minio/minio:${MINIO_VERSION}
+    environment:
+      - MINIO_ROOT_USER=minio
+      - MINIO_ROOT_PASSWORD=minio123
+      - MINIO_STORAGE_USE_HTTPS=False
+    ports:
+      - 9000:9000
+      - 9001:9001
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        mkdir -p /data/loki-data && \
+        mkdir -p /data/loki-ruler && \
+        minio server /data --address ':9000' --console-address ':9001'
+    volumes:
+      - ./data/minio:/data
+    networks:
+      - lokinet
+
+networks:
+  lokinet: {}
